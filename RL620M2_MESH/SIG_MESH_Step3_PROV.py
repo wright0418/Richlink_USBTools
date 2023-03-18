@@ -8,6 +8,7 @@ pip install pysimplegui
     開啟一個 thread  read UART 回應 訊息，持續接收 UART 資料
 3. 按鍵 Send AT+MRG\r\n , 詢問 MESH Module 是哪一種 "DEVICE /PROVISIONER"
 4. 建立 處理 綁定 流程 thread  
+5. 綁定 裝置管理 , 是否在線 顯示
 
 '''
 import serial.tools.list_ports
@@ -20,7 +21,7 @@ import threading
 # find all COM Port Number
 # Get a list of available serial ports using the serial.tools.list_ports module.
 # Extract only the name of each port using a list comprehension.
-ports = [port[0] for port in list(serial.tools.list_ports.comports())]
+ports = [port.device for port in serial.tools.list_ports.comports()]
 
 # Define a list of AT CMD options.
 at_cmd_options = ['VER', 'MRG', 'REBOOT', 'NL',
@@ -65,6 +66,12 @@ prov_state = None
 
 # 創建一個threading.Lock()
 lock = threading.Lock()
+
+# Note .....
+# Thread 中的 event  會透過 window.write_event_value() 將 訊息傳回 main GUI Thread
+# 主 GUI 在   window.read() 就會收到此 Event 與  value
+# window.write_event_value( ('-READ_THREAD-', 'OUTPUT', msg), None)
+#        Event = ('-READ_THREAD-', 'OUTPUT', msg) , Value = None
 
 
 def read_thread():
@@ -152,19 +159,24 @@ while keep_window_open:
             window['STATUS'].update('Open', background_color='green')
             window['CONNECT'].update(disabled=True)
             ble_connected = True
+
+            # 連線上後，建立一個讀取  UART  thread ，並啟動 thread
             t = threading.Thread(target=read_thread, daemon=True)
             t.start()
             # check Role
             write_mesh_AtCmd('MRG')
-
+# check event from read thread
     elif event[0] == '-READ_THREAD-':
-        if event[1] == 'OUTPUT':
-            window['OUTPUT'].print(event[2])
-        elif event[1] == 'ROLE':
-            window['ROLE'].update(event[2])
-        elif event[1] == 'DEVICE':
+        name = event[1]
+        value = event[2]
+        if name == 'OUTPUT':
+            window['OUTPUT'].print(value)
+        elif name == 'ROLE':
+            window['ROLE'].update(value)
+        elif name == 'DEVICE':
             window['DEVICE'].update(values=unbind_dict)
 
+# check event from bind  thread
     elif event[0] == '-BIND_THREAD-':
         if event[1] == 'SUCCESS':
             sg.popup_no_buttons('Binding success!', auto_close_duration=4)
